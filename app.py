@@ -7,7 +7,7 @@ from PIL import Image
 # ---------------------------------------------------------
 # 1. CONFIGURACIÓN DE PÁGINA E IDENTIDAD VISUAL
 # ---------------------------------------------------------
-LOGO_PATH = "logo.png"
+LOGO_PATH = "logo.jpg"
 
 # Icono de pestaña (usa el logo si existe, o el icono de graduación por defecto)
 page_icon = "🎓"
