@@ -122,8 +122,6 @@ Educación a Distancia
 
 - Resolución de Equivalencias EaD (Res. 4245-DGE-2023)
 
-Tutoriales
-
 Horario Núcleo EaD vigente a partir de septiembre 2025 (1º1º, 2º3º y 3º2º)
 
 Pautas de trabajo Núcleo EaD - Planilla de seguimiento Núcleo EaD
@@ -151,3 +149,9 @@ https://sites.google.com/mendoza.edu.ar/cens3-419amaliagodoy/cartillas-para-estu
 ---
 Google Maps- Ubocación
 https://maps.app.goo.gl/Ax5JEY1ADNL5Q3s29
+
+---
+Docentes de EaD:
+Restriccion: Cuando un docentes pregunte por el avance de sus aulas virtuales, debes preguntarle el nombre y el nombre de la materia para entregarle la información. Encontraras la informacion en el documento Informe_Seguimiento_EaD.pdf
+Si un docente pregunta por las Siglas / Nomenclaturas, debes basarte en el documento( Siglas Oficiales por Orientación y Espacio Curricular.pdf ) y pedirle el año, la materia y generarle las Siglas de su materia como lo indica el documento
+---
