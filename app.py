@@ -22,7 +22,7 @@ st.set_page_config(
     page_title="AmalIA - CENS N° 3-419",
     page_icon=page_icon,
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ---------------------------------------------------------
@@ -35,49 +35,95 @@ if not API_KEY:
     st.stop()
 
 # ---------------------------------------------------------
-# 3. LECTURA LOCAL DE DOCUMENTOS (PDF Y TXT)
+# 3. SELECCIÓN DE ROL Y SUBCARPETAS
 # ---------------------------------------------------------
-DOCS_DIR = "documentos"
+st.sidebar.title("Configuración")
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
 
-@st.cache_resource(show_spinner="Procesando apuntes del CENS N° 3-419...")
-def cargar_textos_documentos():
+ROL_OPCIONES = {
+    "Estudiante": "estudiantes",
+    "Docente": "docentes",
+    "Directivo / Administrativo": "directivos"
+}
+
+# Inicializar o detectar cambio de rol para reiniciar la conversación
+rol_seleccionado = st.sidebar.selectbox(
+    "Selecciona tu perfil:",
+    list(ROL_OPCIONES.keys()),
+    key="rol_actual"
+)
+
+subcarpeta_rol = ROL_OPCIONES[rol_seleccionado]
+
+# Si el usuario cambia de rol, reiniciamos el historial de conversación
+if "ultimo_rol" not in st.session_state:
+    st.session_state.ultimo_rol = rol_seleccionado
+
+if st.session_state.ultimo_rol != rol_seleccionado:
+    st.session_state.ultimo_rol = rol_seleccionado
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": f"¡Hola! Has cambiado al perfil **{rol_seleccionado}**. ¿En qué puedo orientarte hoy?"
+        }
+    ]
+
+# ---------------------------------------------------------
+# 4. LECTURA LOCAL DE DOCUMENTOS POR ROL
+# ---------------------------------------------------------
+BASE_DOCS_DIR = "documentos"
+
+@st.cache_resource(show_spinner="Procesando apuntes del perfil seleccionado...")
+def cargar_textos_documentos_por_rol(subcarpeta: str):
+    """
+    Carga documentos de la subcarpeta del rol específico (ej. documentos/estudiantes/)
+    y también de la raíz 'documentos/' si existen archivos comunes a todos.
+    """
     textos_acumulados = []
-    if not os.path.exists(DOCS_DIR):
-        os.makedirs(DOCS_DIR, exist_ok=True)
-        return ""
+    
+    # 1. Rutas a revisar: la subcarpeta específica del rol y la raíz general
+    directorios_a_revisar = [os.path.join(BASE_DOCS_DIR, subcarpeta), BASE_DOCS_DIR]
 
-    for ruta in glob.glob(os.path.join(DOCS_DIR, "*.txt")):
-        try:
-            with open(ruta, "r", encoding="utf-8") as f:
-                texto = f.read().strip()
-                if texto:
-                    textos_acumulados.append(f"--- DOCUMENTO: {os.path.basename(ruta)} ---\n{texto}")
-        except Exception as e:
-            st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
+    for carpeta in directorios_a_revisar:
+        if not os.path.exists(carpeta):
+            os.makedirs(carpeta, exist_ok=True)
+            continue
 
-    for ruta in glob.glob(os.path.join(DOCS_DIR, "*.pdf")):
-        try:
-            reader = PdfReader(ruta)
-            paginas = [p.extract_text() or "" for p in reader.pages]
-            texto_pdf = "\n".join(paginas).strip()
-            if texto_pdf:
-                textos_acumulados.append(f"--- DOCUMENTO PDF: {os.path.basename(ruta)} ---\n{texto_pdf}")
-        except Exception as e:
-            st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
+        # Lectura de TXT
+        for ruta in glob.glob(os.path.join(carpeta, "*.txt")):
+            try:
+                with open(ruta, "r", encoding="utf-8") as f:
+                    texto = f.read().strip()
+                    if texto:
+                        textos_acumulados.append(f"--- DOCUMENTO: {os.path.basename(ruta)} ---\n{texto}")
+            except Exception as e:
+                st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
+
+        # Lectura de PDF
+        for ruta in glob.glob(os.path.join(carpeta, "*.pdf")):
+            try:
+                reader = PdfReader(ruta)
+                paginas = [p.extract_text() or "" for p in reader.pages]
+                texto_pdf = "\n".join(paginas).strip()
+                if texto_pdf:
+                    textos_acumulados.append(f"--- DOCUMENTO PDF: {os.path.basename(ruta)} ---\n{texto_pdf}")
+            except Exception as e:
+                st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
 
     return "\n\n".join(textos_acumulados)
 
-contenido_apuntes = cargar_textos_documentos()
+contenido_apuntes = cargar_textos_documentos_por_rol(subcarpeta_rol)
 
 # ---------------------------------------------------------
-# 4. INSTRUCCIONES DEL SISTEMA
+# 5. INSTRUCCIONES DEL SISTEMA
 # ---------------------------------------------------------
 PROMPT_FILE = "prompt_sistema.txt"
 
-def construir_prompt_sistema(base_apuntes):
+def construir_prompt_sistema(base_apuntes, rol):
     instrucciones = (
         "Eres AmalIA, la asistente virtual oficial del CENS N° 3-419. "
-        "Eres empática, paciente, motivadora y respondes de forma clara a los estudiantes."
+        "Eres empática, paciente, motivadora y respondes de forma clara a la comunidad educativa."
     )
     if os.path.exists(PROMPT_FILE):
         try:
@@ -88,24 +134,17 @@ def construir_prompt_sistema(base_apuntes):
         except Exception:
             pass
 
+    prompt_final = f"{instrucciones}\n\n[CONTEXTO DE ATENCIÓN]: El usuario actual interactúa con el rol de: {rol}."
     if base_apuntes:
-        return f"{instrucciones}\n\n=== APUNTES Y MATERIAL OFICIAL DE ESTUDIO ===\n{base_apuntes}"
-    return instrucciones
+        prompt_final += f"\n\n=== APUNTES Y DOCUMENTACIÓN OFICIAL DISPONIBLE ===\n{base_apuntes}"
+    return prompt_final
 
-SYSTEM_PROMPT = construir_prompt_sistema(contenido_apuntes)
+SYSTEM_PROMPT = construir_prompt_sistema(contenido_apuntes, rol_seleccionado)
 
 # ---------------------------------------------------------
-# 5. LLAMADA NATIVA PARA CLAVES "AQ." (HEADER x-goog-api-key)
+# 6. LLAMADA NATIVA PARA CLAVES "AQ." (HEADER x-goog-api-key)
 # ---------------------------------------------------------
 def consultar_gemini(historial_mensajes, prompt_sistema, clave):
-    """
-    Envía la solicitud REST directa usando x-goog-api-key,
-    que es el estándar oficial de Google para las nuevas claves AQ.
-    """
-    # Nota: Google bloqueó TODA la familia "gemini-2.5-*" para proyectos/cuentas
-    # nuevas ("no longer available to new users"), y ya había retirado "gemini-1.5-*".
-    # Por eso usamos únicamente la generación vigente (3.x) y sus alias auto-actualizables,
-    # que Google recomienda explícitamente en vez de fijar una versión con fecha.
     modelos_a_probar = [
         "gemini-flash-latest",
         "gemini-flash-lite-latest",
@@ -131,7 +170,6 @@ def consultar_gemini(historial_mensajes, prompt_sistema, clave):
         }
     }
 
-    # Cabecera oficial para autenticar con claves AQ.
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": clave
@@ -147,8 +185,6 @@ def consultar_gemini(historial_mensajes, prompt_sistema, clave):
                 data = response.json()
                 candidatos = data.get("candidates") or []
                 if not candidatos:
-                    # La respuesta llegó vacía (por ejemplo, bloqueada por los filtros
-                    # de seguridad). Probamos con el siguiente modelo de la lista.
                     ultimo_error = f"'{modelo}' devolvió una respuesta sin contenido."
                     continue
                 partes = candidatos[0].get("content", {}).get("parts", [])
@@ -158,21 +194,15 @@ def consultar_gemini(historial_mensajes, prompt_sistema, clave):
                 ultimo_error = f"'{modelo}' devolvió una respuesta vacía."
                 continue
 
-            # La clave es inválida, fue revocada o no tiene la API habilitada.
             if response.status_code in (401, 403):
                 raise Exception(
                     "La clave GEMINI_API_KEY fue rechazada por Google (código "
-                    f"{response.status_code}). Verifica que la clave sea válida, que la "
-                    "'Generative Language API' esté habilitada en el proyecto, y que la "
-                    "clave no haya sido revocada. Detalle: " + response.text
+                    f"{response.status_code}). Verifica que la clave sea válida. "
+                    "Detalle: " + response.text
                 )
 
-            # Se superó la cuota gratuita o el límite de solicitudes.
             if response.status_code == 429:
-                ultimo_error = (
-                    "Se alcanzó el límite de solicitudes (cuota) de la API de Gemini. "
-                    "Espera unos minutos y volvé a intentar."
-                )
+                ultimo_error = "Se alcanzó el límite de solicitudes de la API de Gemini. Aguarda unos minutos."
                 continue
 
             ultimo_error = f"Código {response.status_code}: {response.text}"
@@ -184,7 +214,7 @@ def consultar_gemini(historial_mensajes, prompt_sistema, clave):
     raise Exception(ultimo_error)
 
 # ---------------------------------------------------------
-# 6. ENCABEZADO Y PRESENTACIÓN VISUAL
+# 7. ENCABEZADO Y PRESENTACIÓN VISUAL
 # ---------------------------------------------------------
 col1, col2, col3 = st.columns([1, 1.2, 1])
 with col2:
@@ -193,22 +223,21 @@ with col2:
 
 st.markdown("<h2 style='text-align: center; margin-bottom: 2px;'>AmalIA - CENS N° 3-419</h2>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #888; font-size: 0.95rem; margin-top: 0px;'>"
-    "Espacio de consultas para estudiantes: dudas sobre los apuntes de la materia "
-    "y asistencia paso a paso para el uso del Aula Virtual."
+    f"<p style='text-align: center; color: #666; font-size: 0.95rem; margin-top: 0px;'>"
+    f"Canal de asistencia para <b>{rol_seleccionado}</b>. Dudas pedagógicas, apuntes y soporte de Aula Virtual."
     "</p>",
     unsafe_allow_html=True
 )
 st.divider()
 
 # ---------------------------------------------------------
-# 7. HISTORIAL DEL CHAT
+# 8. HISTORIAL DEL CHAT
 # ---------------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "¡Hola! Te doy la bienvenida. Soy **AmalIA**, tu asistente virtual en el **CENS N° 3-419**. ¿En qué puedo orientarte hoy con la materia o con el aula virtual?"
+            "content": f"¡Hola! Te doy la bienvenida. Soy **AmalIA**, asistente virtual del **CENS N° 3-419**. Ingresaste con el perfil de **{rol_seleccionado}**. ¿En qué puedo orientarte hoy?"
         }
     ]
 
@@ -220,7 +249,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------
-# 8. ENTRADA Y RESPUESTAS
+# 9. ENTRADA Y RESPUESTAS
 # ---------------------------------------------------------
 if prompt := st.chat_input("Escribe aquí tu consulta..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -228,10 +257,8 @@ if prompt := st.chat_input("Escribe aquí tu consulta..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant", avatar=avatar_asistente):
-        with st.spinner("AmalIA está consultando los apuntes..."):
+        with st.spinner("AmalIA está consultando la documentación..."):
             try:
-                # Omitir el saludo inicial (siempre el primer mensaje) al armar
-                # el historial para la API, sin depender de comparar textos.
                 mensajes_a_enviar = st.session_state.messages[1:]
                 if not mensajes_a_enviar:
                     mensajes_a_enviar = [{"role": "user", "content": prompt}]
