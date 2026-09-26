@@ -69,8 +69,21 @@ if st.session_state.ultimo_rol != rol_seleccionado:
         }
     ]
 
+# Botón en la barra lateral para forzar la relectura de documentos
+if st.sidebar.button("🔄 Recargar Documentos / Borrar Caché", use_container_width=True):
+    st.cache_resource.clear()
+    st.rerun()
+
+# Botón directo de WhatsApp para inscripciones
+st.sidebar.markdown("---")
+st.sidebar.link_button(
+    "📲 WhatsApp de Inscripciones",
+    "https://wa.me/5492634566384?text=Hola%2C%20quisiera%20m%C3%A1s%20informaci%C3%B3n%20sobre%20las%20inscripciones.",
+    use_container_width=True
+)
+
 # ---------------------------------------------------------
-# 4. LECTURA LOCAL DE DOCUMENTOS POR ROL
+# 4. LECTURA LOCAL DE DOCUMENTOS POR ROL (RECURSIVA)
 # ---------------------------------------------------------
 BASE_DOCS_DIR = "documentos"
 
@@ -79,19 +92,24 @@ def cargar_textos_documentos_por_rol(subcarpeta: str):
     """
     Carga documentos de la subcarpeta del rol específico (ej. documentos/estudiantes/)
     y también de la raíz 'documentos/' si existen archivos comunes a todos.
+    Realiza una lectura recursiva para abarcar carpetas internas.
     """
     textos_acumulados = []
+    archivos_procesados = []
     
-    # 1. Rutas a revisar: la subcarpeta específica del rol y la raíz general
-    directorios_a_revisar = [os.path.join(BASE_DOCS_DIR, subcarpeta), BASE_DOCS_DIR]
+    # Rutas a revisar: la subcarpeta específica del rol y la carpeta raíz general
+    carpetas_a_revisar = [os.path.join(BASE_DOCS_DIR, subcarpeta), BASE_DOCS_DIR]
 
-    for carpeta in directorios_a_revisar:
+    for carpeta in carpetas_a_revisar:
         if not os.path.exists(carpeta):
             os.makedirs(carpeta, exist_ok=True)
             continue
 
-        # Lectura de TXT
-        for ruta in glob.glob(os.path.join(carpeta, "*.txt")):
+        # Lectura de TXT recursiva
+        for ruta in glob.glob(os.path.join(carpeta, "**", "*.txt"), recursive=True):
+            if ruta in archivos_procesados:
+                continue
+            archivos_procesados.append(ruta)
             try:
                 with open(ruta, "r", encoding="utf-8") as f:
                     texto = f.read().strip()
@@ -100,20 +118,29 @@ def cargar_textos_documentos_por_rol(subcarpeta: str):
             except Exception as e:
                 st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
 
-        # Lectura de PDF
-        for ruta in glob.glob(os.path.join(carpeta, "*.pdf")):
+        # Lectura de PDF recursiva
+        for ruta in glob.glob(os.path.join(carpeta, "**", "*.pdf"), recursive=True):
+            if ruta in archivos_procesados:
+                continue
+            archivos_procesados.append(ruta)
             try:
                 reader = PdfReader(ruta)
                 paginas = [p.extract_text() or "" for p in reader.pages]
                 texto_pdf = "\n".join(paginas).strip()
-                if texto_pdf:
+                
+                if not texto_pdf:
+                    st.warning(f"⚠️ El archivo '{os.path.basename(ruta)}' no contiene texto digital legible (puede ser una imagen o escaneo).")
+                else:
                     textos_acumulados.append(f"--- DOCUMENTO PDF: {os.path.basename(ruta)} ---\n{texto_pdf}")
             except Exception as e:
                 st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
 
-    return "\n\n".join(textos_acumulados)
+    return "\n\n".join(textos_acumulados), len(archivos_procesados)
 
-contenido_apuntes = cargar_textos_documentos_por_rol(subcarpeta_rol)
+contenido_apuntes, total_archivos = cargar_textos_documentos_por_rol(subcarpeta_rol)
+
+# Información de documentos detectados en la barra lateral
+st.sidebar.caption(f"📄 Archivos leídos en este perfil: **{total_archivos}**")
 
 # ---------------------------------------------------------
 # 5. INSTRUCCIONES DEL SISTEMA
@@ -249,9 +276,30 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------
-# 9. ENTRADA Y RESPUESTAS
+# 9. ENTRADA Y CONSULTAS RÁPIDAS
 # ---------------------------------------------------------
-if prompt := st.chat_input("Escribe aquí tu consulta..."):
+prompt_sugerido = None
+
+# Botones de consulta rápida según el rol
+if rol_seleccionado == "Estudiante":
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("📝 Información sobre inscripciones", use_container_width=True):
+            prompt_sugerido = "Hola, quisiera más información sobre las inscripciones."
+    with col_btn2:
+        if st.button("💻 ¿Cómo subir una tarea a Moodle?", use_container_width=True):
+            prompt_sugerido = "¿Cómo hago para adjuntar y subir una tarea al aula virtual Moodle?"
+
+placeholder_input = (
+    "Hola, quisiera más información sobre las inscripciones..."
+    if rol_seleccionado == "Estudiante"
+    else "Escribe aquí tu consulta..."
+)
+
+prompt_manual = st.chat_input(placeholder=placeholder_input)
+prompt = prompt_sugerido or prompt_manual
+
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(prompt)
