@@ -141,6 +141,7 @@ Memorándum  MEMORÁNDUM N.º 45 – EaD
 ---
 Para Estudiantes: 
 Documentación pedagógica
+Si un estudiante quiere una cartilla, pedile que te diga la materia, el año y si es de núcleo, para compartir el enlace busca los datos en el archivo catillas.json.
 A continuación, se comparte los accesos directos a  la documentación pedagógica (planificación interdisciplinar, programas y cartillas) de los diferentes espacios curriculares del Bachiller en Agro  y Ambiente que ofrece el CENS.
 https://sites.google.com/mendoza.edu.ar/cens3-419amaliagodoy/documentaci%C3%B3n-pedag%C3%B3gica
 MATERIAL para estudiantes(cartillas):
