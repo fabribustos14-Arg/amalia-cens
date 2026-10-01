@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 2. GESTIÓN DE CREDENCIALES
+# 2. GESTIÓN DE CREDENCIALES Y SECRETOS
 # ---------------------------------------------------------
 API_KEY = st.secrets.get("GEMINI_API_KEY", "").strip()
 
@@ -34,8 +34,12 @@ if not API_KEY:
     st.error("⚠️ Clave GEMINI_API_KEY no encontrada en los secrets.")
     st.stop()
 
+# Claves de control de acceso
+PASSWORD_DOCENTE = st.secrets.get("PASSWORD_DOCENTE", "3419")
+PASSWORD_DIRECTIVO = st.secrets.get("PASSWORD_DIRECTIVO", "3419")
+
 # ---------------------------------------------------------
-# 3. BARRA LATERAL: ROL, ACCIONES Y CONTACTOS
+# 3. BARRA LATERAL: ROL Y AUTENTICACIÓN
 # ---------------------------------------------------------
 st.sidebar.title("Configuración")
 if os.path.exists(LOGO_PATH):
@@ -55,7 +59,28 @@ rol_seleccionado = st.sidebar.selectbox(
 
 subcarpeta_rol = ROL_OPCIONES[rol_seleccionado]
 
-# Control de cambio de perfil
+# Control de acceso con contraseña para perfiles protegidos
+acceso_autorizado = True
+
+if rol_seleccionado == "Docente":
+    pin_doc = st.sidebar.text_input("🔑 Contraseña Docente:", type="password", key="pass_doc")
+    if pin_doc != PASSWORD_DOCENTE:
+        acceso_autorizado = False
+        if pin_doc:
+            st.sidebar.error("Contraseña incorrecta.")
+        else:
+            st.sidebar.info("Ingresa la clave docente para acceder.")
+
+elif rol_seleccionado == "Directivo / Administrativo":
+    pin_dir = st.sidebar.text_input("🔑 Contraseña Directivo:", type="password", key="pass_dir")
+    if pin_dir != PASSWORD_DIRECTIVO:
+        acceso_autorizado = False
+        if pin_dir:
+            st.sidebar.error("Contraseña incorrecta.")
+        else:
+            st.sidebar.info("Ingresa la clave de equipo directivo para acceder.")
+
+# Control de cambio de perfil en el chat
 if "ultimo_rol" not in st.session_state:
     st.session_state.ultimo_rol = rol_seleccionado
 
@@ -117,7 +142,7 @@ def cargar_textos_documentos_por_rol(subcarpeta: str):
             os.makedirs(carpeta, exist_ok=True)
             continue
 
-        # Lectura de archivos TXT
+        # Archivos TXT
         for ruta in glob.glob(os.path.join(carpeta, "**", "*.txt"), recursive=True):
             if ruta in archivos_procesados:
                 continue
@@ -130,7 +155,7 @@ def cargar_textos_documentos_por_rol(subcarpeta: str):
             except Exception as e:
                 st.warning(f"No se pudo leer '{os.path.basename(ruta)}': {e}")
 
-        # Lectura de archivos PDF
+        # Archivos PDF
         for ruta in glob.glob(os.path.join(carpeta, "**", "*.pdf"), recursive=True):
             if ruta in archivos_procesados:
                 continue
@@ -148,8 +173,13 @@ def cargar_textos_documentos_por_rol(subcarpeta: str):
 
     return "\n\n".join(textos_acumulados), len(archivos_procesados)
 
-contenido_apuntes, total_archivos = cargar_textos_documentos_por_rol(subcarpeta_rol)
-st.sidebar.caption(f"📄 Archivos leídos en este perfil: **{total_archivos}**")
+# Solo carga los documentos del rol si el acceso está autorizado
+if acceso_autorizado:
+    contenido_apuntes, total_archivos = cargar_textos_documentos_por_rol(subcarpeta_rol)
+    st.sidebar.caption(f"📄 Archivos leídos en este perfil: **{total_archivos}**")
+else:
+    contenido_apuntes, total_archivos = "", 0
+    st.sidebar.caption("🔒 Acceso restringido. Ingrese contraseña.")
 
 # ---------------------------------------------------------
 # 5. CATÁLOGO DE CARTILLAS (GOOGLE DRIVE)
@@ -299,7 +329,15 @@ st.markdown(
 st.divider()
 
 # ---------------------------------------------------------
-# 9. HISTORIAL DEL CHAT
+# 9. VALIDACIÓN DE BLOQUEO DE PANTALLA
+# ---------------------------------------------------------
+if not acceso_autorizado:
+    st.warning(f"🔒 El perfil **{rol_seleccionado}** requiere autorización previa.")
+    st.info("Por favor, ingresa la contraseña correspondiente en la barra lateral para desbloquear las consultas y la documentación de esta área.")
+    st.stop()  # Detiene la ejecución aquí: no dibuja el chat ni permite enviar mensajes
+
+# ---------------------------------------------------------
+# 10. HISTORIAL DEL CHAT
 # ---------------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -317,7 +355,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------
-# 10. ENTRADA Y CONSULTAS RÁPIDAS
+# 11. ENTRADA Y CONSULTAS RÁPIDAS
 # ---------------------------------------------------------
 prompt_sugerido = None
 
